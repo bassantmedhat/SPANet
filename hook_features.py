@@ -11,6 +11,16 @@ import torch.nn as nn
 from clip.clip.model import (CLIP, AttentionPool2d, ModifiedResNet,
                              VisionTransformer, build_model)
 
+import open_clip
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+
+import torch
+
+# Explicitly use 'cuda:0' for the visible GPU 6
+device = torch.device('cuda:0')  # 'cuda:0' will refer to GPU 6
+
+
 model_dir = './pretrained_models'
 
 
@@ -122,7 +132,9 @@ class CLIPResNetFeature(GeneralFeature):
 
 
 def _vit_modified_forward(self: VisionTransformer, x: torch.Tensor):
+
     x = self.conv1(x)  # shape = [*, width, grid, grid]
+    # print("after conv1d", x.shape)
     # shape = [*, width, grid ** 2]
     x = x.reshape(x.shape[0], x.shape[1], -1)
     x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
@@ -157,6 +169,7 @@ class CLIPViTFeature(GeneralFeature):
 
     def forward(self, x: torch.Tensor):
         x_size = x.size()  # [BS, 3, 224, 224]
+        # print("# [BS, 3, 224, 224]",x_size)
         x = self.model(x)  # x [BS, 50, 768] or [BS, 1+14*14, 768]
 
         # TODO: ln_post should be here?
@@ -250,6 +263,7 @@ def clip_resnet50_features(pretrained=False, **kwargs):
     return image_model, text_model
 
 
+
 def clip_resnet101_features(pretrained=False, **kwargs):
     if pretrained:
         pretrained_file = os.path.join(model_dir, 'clip', 'RN101.zip')
@@ -308,25 +322,25 @@ def clip_vitb32_features(pretrained=False, **kwargs):
     return image_model, text_model
 
 
+
 def clip_vitb16_features(pretrained=False, **kwargs):
+    # load echoclip using hugging face api 
+    # 1- load model state dict
+    # 2- call build model
+    # 3- convert weights 
+    # 4- call modifier visual feature and modified text feature
     if pretrained:
-        pretrained_file = os.path.join(model_dir, 'clip', 'ViT-B-16.zip')
+        pretrained_file = '/home/bassant/code/baseline/SPANet/echo_clip'
         assert os.path.exists(
             pretrained_file), 'Please download the CLIP model first'
-        with open(pretrained_file, "rb") as opened_file:
-            try:
-                # loading JIT archive
-                clip = torch.jit.load(opened_file, map_location="cpu").eval()
-                state_dict = None
-            except RuntimeError:
-                # loading saved state dict
-                state_dict = torch.load(opened_file, map_location="cpu")
 
-        state_dict = state_dict or clip.state_dict()
+        clip, preprocess_train, preprocess_val = open_clip.create_model_and_transforms('ViT-B-16')
+        tokenizer = open_clip.get_tokenizer('ViT-B-16')
+
+        state_dict = clip.state_dict()
 
         clip = build_model(state_dict)
         convert_weights_to_fp32(clip)
-        # clip.train()
     else:
         raise NotImplementedError
 
@@ -335,6 +349,8 @@ def clip_vitb16_features(pretrained=False, **kwargs):
     del clip
 
     return image_model, text_model
+
+
 
 
 if __name__ == '__main__':
@@ -350,3 +366,6 @@ if __name__ == '__main__':
 
     clip_vb16_features = clip_vitb16_features(pretrained=True)
     print(clip_vb16_features)
+
+    # echoclip_features = echo_clip_features(pretrained=True)
+    # print(echoclip_features)
